@@ -1,0 +1,63 @@
+name: Build Plain WASM ONNX Runtime
+
+on:
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-22.04
+
+    steps:
+      - name: Checkout ONNX Runtime 1.22
+        uses: actions/checkout@v4
+        with:
+          repository: microsoft/onnxruntime
+          ref: v1.22.0
+          submodules: recursive
+
+      - name: Setup Emscripten
+        working-directory: cmake/external/emsdk
+        run: |
+          ./emsdk install latest
+          ./emsdk activate latest
+
+      - name: Build plain WASM
+        run: |
+          source cmake/external/emsdk/emsdk_env.sh
+
+          ./build.sh \
+            --config Release \
+            --build_wasm \
+            --skip_tests \
+            --disable_wasm_exception_catching \
+            --disable_rtti \
+            --parallel
+
+      - name: Find generated runtime
+        run: |
+          find build -type f \( \
+            -name "ort-wasm.wasm" -o \
+            -name "ort-wasm.mjs" \
+          \) -print
+
+      - name: Package runtime
+        run: |
+          mkdir -p output/runtime
+
+          find build -type f -name "ort-wasm.wasm" \
+            -exec cp {} output/runtime/ort-wasm.wasm \;
+
+          find build -type f -name "ort-wasm.mjs" \
+            -exec cp {} output/runtime/ort-wasm.mjs \;
+
+          test -f output/runtime/ort-wasm.wasm
+          test -f output/runtime/ort-wasm.mjs
+
+          cd output
+          zip -r ../plain-wasm-runtime.zip runtime
+
+      - name: Upload runtime ZIP
+        uses: actions/upload-artifact@v4
+        with:
+          name: plain-wasm-runtime
+          path: plain-wasm-runtime.zip
